@@ -10,7 +10,8 @@ import numpy as np
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
-
+    if len(pose_landmarks_list) == 0:
+        return annotated_image
     # Loop through the detected poses to visualize.
     for idx in range(len(pose_landmarks_list)):
         pose_landmarks = pose_landmarks_list[idx]
@@ -64,7 +65,7 @@ while(True):
             pose_landmarker_result = landmarker.detect(mp_image)
             print(pose_landmarker_result)
             annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), pose_landmarker_result)
-            cv2.imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+            cv2.imshow('frame', cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
 
 
     # Exit on pressing 'q'
