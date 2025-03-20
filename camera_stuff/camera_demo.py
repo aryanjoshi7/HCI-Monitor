@@ -5,7 +5,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
-
+import time
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
@@ -28,6 +28,13 @@ def draw_landmarks_on_image(rgb_image, detection_result):
         solutions.drawing_styles.get_default_pose_landmarks_style())
     return annotated_image
 
+def is_bad_posture(landmarks):
+    shoulder_depth = (landmarks[0][12].z + landmarks[0][11].z)/2
+    face_depth = landmarks[0][1].z
+    print(shoulder_depth)
+    print(face_depth)
+    print()
+    return False
 
 # Initialize the camera
 cap = cv2.VideoCapture(0)  # 0 usually corresponds to the default camera
@@ -38,6 +45,8 @@ if not cap.isOpened():
     exit()
 
 # Capture frames in a loop
+bad_posture_duration = 0
+BAD_POSTURE_DURATION_THRESHOLD = 10 # number of seconds user needs to have bad posture in order to prompt movement
 while(True):
     # Read a frame
     ret, frame = cap.read()
@@ -59,15 +68,24 @@ while(True):
             running_mode=VisionRunningMode.IMAGE)
 
         with PoseLandmarker.create_from_options(options) as landmarker:
-            print(frame)
             image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
             pose_landmarker_result = landmarker.detect(mp_image)
-            print(pose_landmarker_result)
+            # print(pose_landmarker_result)
             annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), pose_landmarker_result)
             cv2.imshow('frame', cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+            # print( pose_landmarker_result.pose_landmarks)
+            if len(pose_landmarker_result.pose_landmarks):
+                if is_bad_posture(pose_landmarker_result.pose_landmarks):
+                    bad_posture_duration += 1
+                else:
+                    bad_posture_duration = 0
+                
+                if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
+                    # Move screen up
+                    pass
 
-
+    time.sleep(1)
     # Exit on pressing 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
