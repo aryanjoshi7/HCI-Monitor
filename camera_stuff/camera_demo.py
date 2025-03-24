@@ -7,6 +7,28 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import time
 
+
+TARGET_EYE_HEIGHT = 0.55
+
+BaseOptions = mp.tasks.BaseOptions
+PoseLandmarker = mp.tasks.vision.PoseLandmarker
+PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
+options = PoseLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path='/Users/aditkolli/Desktop/HCI-Monitor/HCI-Monitor/pose_landmarker_full.task'),
+    running_mode=VisionRunningMode.IMAGE)
+landmarker = PoseLandmarker.create_from_options(options)
+
+# Initialize the camera
+cap = cv2.VideoCapture(0)  # 0 usually corresponds to the default camera
+
+# Check if the camera opened successfully
+if not cap.isOpened():
+    print("Cannot open camera")
+    exit()
+
+
+
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
@@ -31,18 +53,31 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 def is_bad_posture(landmarks):
     shoulder_depth = (landmarks[0][12].z + landmarks[0][11].z)/2
     face_depth = landmarks[0][1].z
-    print(shoulder_depth)
-    print(face_depth)
-    print()
+    # print(shoulder_depth)
+    # print(face_depth)
+    # print()
     return False
 
-# Initialize the camera
-cap = cv2.VideoCapture(0)  # 0 usually corresponds to the default camera
 
-# Check if the camera opened successfully
-if not cap.isOpened():
-    print("Cannot open camera")
-    exit()
+
+
+def initial_setup():
+    # Adjust monitor so that it is at correct height for user
+    ret, frame = cap.read()
+    while frame is None or not ret:
+        ret, frame = cap.read()
+    image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+    pose_landmarker_result = landmarker.detect(mp_image)
+    eye_level = pose_landmarker_result.pose_landmarks[0][2].y
+    while abs(eye_level - TARGET_EYE_HEIGHT) > 0.05:
+        if eye_level > TARGET_EYE_HEIGHT:
+            # MOVE DOWN
+            pass
+        else:
+            #MOVE UP
+            pass
+
 
 # Capture frames in a loop
 bad_posture_duration = 0
@@ -59,33 +94,24 @@ while(True):
     # Posture detection
     cv2.imshow('frame', frame)
     if frame is not None:
-        BaseOptions = mp.tasks.BaseOptions
-        PoseLandmarker = mp.tasks.vision.PoseLandmarker
-        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
-        options = PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='/Users/aditkolli/Desktop/HCI-Monitor/HCI-Monitor/pose_landmarker_full.task'),
-            running_mode=VisionRunningMode.IMAGE)
-
-        with PoseLandmarker.create_from_options(options) as landmarker:
-            image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-            pose_landmarker_result = landmarker.detect(mp_image)
-            # print(pose_landmarker_result)
-            annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), pose_landmarker_result)
-            cv2.imshow('frame', cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
-            # print( pose_landmarker_result.pose_landmarks)
-            if len(pose_landmarker_result.pose_landmarks):
-                if is_bad_posture(pose_landmarker_result.pose_landmarks):
-                    bad_posture_duration += 1
-                else:
-                    bad_posture_duration = 0
+        image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+        pose_landmarker_result = landmarker.detect(mp_image)
+        annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), pose_landmarker_result)
+        cv2.imshow('frame', cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))   
+        if len(pose_landmarker_result.pose_landmarks):
+            print(pose_landmarker_result.pose_landmarks[0][2].y)
+            if is_bad_posture(pose_landmarker_result.pose_landmarks):
                 
-                if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
-                    # Move screen up
-                    pass
+                bad_posture_duration += 1
+            else:
+                bad_posture_duration = 0
+            
+            if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
+                # Move screen up
+                pass
 
-    time.sleep(1)
+    time.sleep(0.25)
     # Exit on pressing 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
