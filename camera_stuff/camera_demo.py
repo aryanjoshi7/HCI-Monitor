@@ -87,7 +87,9 @@ def initial_setup():
             #MOVE UP
             send_command("MOVE_UP")
 
-
+print("DOING INITIAL SETUP")
+initial_setup()
+print("FINISHED INITIAL SETUP")
 # Capture frames in a loop
 bad_posture_duration = 0
 BAD_POSTURE_DURATION_THRESHOLD = 10 # number of seconds user needs to have bad posture in order to prompt movement
