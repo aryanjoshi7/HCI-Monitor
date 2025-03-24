@@ -6,9 +6,11 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
 import time
-
+import serial
 
 TARGET_EYE_HEIGHT = 0.55
+
+arduino = serial.Serial(port='COM3', baudrate=9600, timeout=1) # TODO: change port maybe
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -22,12 +24,19 @@ landmarker = PoseLandmarker.create_from_options(options)
 # Initialize the camera
 cap = cv2.VideoCapture(0)  # 0 usually corresponds to the default camera
 
+
+
+
 # Check if the camera opened successfully
 if not cap.isOpened():
     print("Cannot open camera")
     exit()
 
-
+def send_command(command):
+    arduino.write(f"{command}\n".encode())
+    time.sleep(0.1)
+    response = arduino.readline().decode().strip()
+    print(f"Arduino Response: {response}")
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
@@ -73,10 +82,10 @@ def initial_setup():
     while abs(eye_level - TARGET_EYE_HEIGHT) > 0.05:
         if eye_level > TARGET_EYE_HEIGHT:
             # MOVE DOWN
-            pass
+            send_command("MOVE_DOWN")
         else:
             #MOVE UP
-            pass
+            send_command("MOVE_UP")
 
 
 # Capture frames in a loop
