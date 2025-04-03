@@ -10,14 +10,14 @@ import serial
 
 TARGET_EYE_HEIGHT = 0.55
 
-arduino = serial.Serial(port='COM3', baudrate=9600, timeout=1) # TODO: change port maybe
+arduino = serial.Serial(port='/dev/cu.usbmodem101', baudrate=115200, timeout=1) # TODO: change port maybe
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 options = PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='/Users/aditkolli/Desktop/HCI-Monitor/HCI-Monitor/pose_landmarker_full.task'),
+    base_options=BaseOptions(model_asset_path='/Users/aryanjoshi/Documents/EECS_classes/HCI-Monitor/pose_landmarker_full.task'),
     running_mode=VisionRunningMode.IMAGE)
 landmarker = PoseLandmarker.create_from_options(options)
 
@@ -33,10 +33,17 @@ if not cap.isOpened():
     exit()
 
 def send_command(command):
+    print("sent", command)
     arduino.write(f"{command}\n".encode())
     time.sleep(0.1)
     response = arduino.readline().decode().strip()
     print(f"Arduino Response: {response}")
+def write_read(x): 
+    print("write_read")
+    arduino.write(bytes(x, 'utf-8')) 
+    time.sleep(0.05) 
+    data = arduino.readline()
+    print(data) 
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
@@ -79,17 +86,25 @@ def initial_setup():
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
     pose_landmarker_result = landmarker.detect(mp_image)
     eye_level = pose_landmarker_result.pose_landmarks[0][2].y
+    print("89", eye_level - TARGET_EYE_HEIGHT)
+
     while abs(eye_level - TARGET_EYE_HEIGHT) > 0.05:
+        print(eye_level)
         if eye_level > TARGET_EYE_HEIGHT:
             # MOVE DOWN
-            send_command("MOVE_DOWN")
+            print("In this else case: ", str(eye_level))
+            write_read(str(9))
         else:
             #MOVE UP
-            send_command("MOVE_UP")
-
+            print("In this test: ", str(eye_level))
+            write_read(str(2))
+        exit()
+    
 print("DOING INITIAL SETUP")
+input()
 initial_setup()
 print("FINISHED INITIAL SETUP")
+exit()
 # Capture frames in a loop
 bad_posture_duration = 0
 BAD_POSTURE_DURATION_THRESHOLD = 10 # number of seconds user needs to have bad posture in order to prompt movement
