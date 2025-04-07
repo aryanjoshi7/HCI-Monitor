@@ -8,9 +8,9 @@ import numpy as np
 import time
 import serial
 
-TARGET_EYE_HEIGHT = 0.55
+TARGET_EYE_HEIGHT = 0.69
 
-arduino = serial.Serial(port='COM3', baudrate=9600, timeout=1) # TODO: change port maybe
+arduino = serial.Serial(port='/dev/tty.usbmodem101', baudrate=9600, timeout=1) # TODO: change port maybe
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -22,7 +22,7 @@ options = PoseLandmarkerOptions(
 landmarker = PoseLandmarker.create_from_options(options)
 
 # Initialize the camera
-cap = cv2.VideoCapture(0)  # 0 usually corresponds to the default camera
+cap = cv2.VideoCapture(1)  # 0 usually corresponds to the default camera
 
 
 
@@ -35,8 +35,11 @@ if not cap.isOpened():
 def send_command(command):
     arduino.write(f"{command}\n".encode())
     time.sleep(0.1)
-    response = arduino.readline().decode().strip()
-    print(f"Arduino Response: {response}")
+    try:
+        response = arduino.readline().decode().strip()
+        print(f"Arduino Response: {response}")
+    except Exception as E:
+        print("No response from Arduino")
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
@@ -67,66 +70,76 @@ def is_bad_posture(landmarks):
     # print()
     return False
 
-
+def detect_landmarks():
+    ret, frame = cap.read()
+    # cv2.imshow('frame', frame)
+    # time.sleep(1)
+    while frame is None or not ret:
+        ret, frame = cap.read()
+    
+    image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+    pose_landmarker_result = landmarker.detect(mp_image)
+    if len(pose_landmarker_result.pose_landmarks):
+        return pose_landmarker_result
+    return detect_landmarks()
 
 
 def initial_setup():
     # Adjust monitor so that it is at correct height for user
-    ret, frame = cap.read()
-    while frame is None or not ret:
-        ret, frame = cap.read()
-    image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-    pose_landmarker_result = landmarker.detect(mp_image)
+    pose_landmarker_result = detect_landmarks()
     eye_level = pose_landmarker_result.pose_landmarks[0][2].y
-    while abs(eye_level - TARGET_EYE_HEIGHT) > 0.05:
+
+    while abs(eye_level - TARGET_EYE_HEIGHT) > 0.06:
+        print(eye_level)
         if eye_level > TARGET_EYE_HEIGHT:
             # MOVE DOWN
-            send_command("MOVE_DOWN")
+            print("HEAD IS TOO LOW")
+            send_command(2)
         else:
-            #MOVE UP
-            send_command("MOVE_UP")
-
+            # MOVE up
+            print("HEAD IS TOO HIGH")
+            send_command(3)
+        time.sleep(1)
+        pose_landmarker_result = detect_landmarks()
+        eye_level = pose_landmarker_result.pose_landmarks[0][2].y
+    # TARGET_EYE_HEIGHT = eye_level
+    print("HEAD IS AT CORRECT HEIGHT")
 print("DOING INITIAL SETUP")
 initial_setup()
 print("FINISHED INITIAL SETUP")
+print("-----------------------------------")
+print()
+print()
 # Capture frames in a loop
 bad_posture_duration = 0
-BAD_POSTURE_DURATION_THRESHOLD = 10 # number of seconds user needs to have bad posture in order to prompt movement
+BAD_POSTURE_DURATION_THRESHOLD = 5 # number of seconds user needs to have bad posture in order to prompt movement
+nudges = 0
+total_bad_posture_duration = 0
+total_duration = 0
 while(True):
-    # Read a frame
-    ret, frame = cap.read()
-
-    # Check if the frame is read correctly
-    if not ret:
-        print("Can't receive frame (stream end?). Exiting...")
-        break
-
-    # Posture detection
-    cv2.imshow('frame', frame)
-    if frame is not None:
-        image_rgb = np.array(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-        pose_landmarker_result = landmarker.detect(mp_image)
-        annotated_image = draw_landmarks_on_image(mp_image.numpy_view(), pose_landmarker_result)
-        cv2.imshow('frame', cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))   
-        if len(pose_landmarker_result.pose_landmarks):
-            print(pose_landmarker_result.pose_landmarks[0][2].y)
-            if is_bad_posture(pose_landmarker_result.pose_landmarks):
-                
-                bad_posture_duration += 1
-            else:
-                bad_posture_duration = 0
-            
-            if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
-                # Move screen up
-                pass
-
-    time.sleep(0.25)
-    # Exit on pressing 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
+    pose_landmarker_result = detect_landmarks()
+    eye_level = pose_landmarker_result.pose_landmarks[0][2].y
+    if eye_level - TARGET_EYE_HEIGHT >= 0.1:
+        print(eye_level)
+        bad_posture_duration += 1
+        total_bad_posture_duration += 1
+    else:
+        bad_posture_duration = 0
+    if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
+        print("BAD POSTURE DETECTED; NUDGING")
+        bad_posture_duration = 0
+        send_command(5) # For vibrate
+        nudges += 1
+    total_duration += 1
+    time.sleep(1)
+    print()
+    print("STATISTICS")
+    print("-----------------------")
+    print("total duration: ", total_duration)
+    print("bad posture duration: ", total_bad_posture_duration)
+    print("consecutive seconds in bad posture", bad_posture_duration)
+    print("nudges: ", nudges)
 # Release the camera and close windows
 cap.release()
 cv2.destroyAllWindows()
