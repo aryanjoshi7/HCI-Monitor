@@ -15,7 +15,7 @@ void moveUp(){
   float position = map(potValue, 0, 1023, 0, 12);
   Serial.println("MOVING MONITOR UP");
   
-  if(potValue > 600){
+  if(potValue > 630){
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
     delay(900);
@@ -40,10 +40,10 @@ void vibrate(){
   Serial.println("MONITOR VIBRATING");
   digitalWrite(IN1, HIGH);
 	digitalWrite(IN2, LOW);
-  delay(200);
+  delay(400);
   digitalWrite(IN1, LOW);
 	digitalWrite(IN2, HIGH);
-  delay(200);
+  delay(400);
   digitalWrite(IN1, LOW);
 	digitalWrite(IN2, LOW);
 }

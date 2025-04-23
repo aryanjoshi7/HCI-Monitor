@@ -7,8 +7,10 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import time
 import serial
-
-TARGET_EYE_HEIGHT = 0.69
+import csv
+import select
+import sys
+TARGET_EYE_HEIGHT = 0.5
 
 arduino = serial.Serial(port='/dev/tty.usbmodem101', baudrate=9600, timeout=1) # TODO: change port maybe
 
@@ -105,6 +107,7 @@ def initial_setup():
         eye_level = pose_landmarker_result.pose_landmarks[0][2].y
     # TARGET_EYE_HEIGHT = eye_level
     print("HEAD IS AT CORRECT HEIGHT")
+
 print("DOING INITIAL SETUP")
 initial_setup()
 print("FINISHED INITIAL SETUP")
@@ -117,29 +120,73 @@ BAD_POSTURE_DURATION_THRESHOLD = 5 # number of seconds user needs to have bad po
 nudges = 0
 total_bad_posture_duration = 0
 total_duration = 0
-while(True):
-    pose_landmarker_result = detect_landmarks()
-    eye_level = pose_landmarker_result.pose_landmarks[0][2].y
-    if eye_level - TARGET_EYE_HEIGHT >= 0.1:
-        print(eye_level)
-        bad_posture_duration += 1
-        total_bad_posture_duration += 1
-    else:
-        bad_posture_duration = 0
-    if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
-        print("BAD POSTURE DETECTED; NUDGING")
-        bad_posture_duration = 0
-        send_command(5) # For vibrate
-        nudges += 1
-    total_duration += 1
-    time.sleep(1)
-    print()
-    print("STATISTICS")
-    print("-----------------------")
-    print("total duration: ", total_duration)
-    print("bad posture duration: ", total_bad_posture_duration)
-    print("consecutive seconds in bad posture", bad_posture_duration)
-    print("nudges: ", nudges)
+TOLERANCE = 0.08
+with open("data_aryan.csv", mode='w', newline='') as csvfile:
+    fieldnames = ["time", "time in bad posture", "nudges", "tolerance", "duration threshold", "target height", "real height"]
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+    mode = "POSTURE_DETECTION"
+    while(True):
+        # if total_duration % 5 == 0:
+        #     mode = input()
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.05)
+        if rlist:
+            user_input = sys.stdin.readline().strip()
+            print("You typed:", user_input)
+            if user_input[-1] == 'P':
+                mode = "POSTURE_DETECTION"
+            if user_input[-1] == 'H':
+                mode = "HEIGHT_ADJUST"
+                print("MODE CHANGED TO HEIGHT ADJUST")
+            if user_input[-1] == 'N':
+                mode = "NO_MOVE"
+
+        pose_landmarker_result = detect_landmarks()
+        eye_level = pose_landmarker_result.pose_landmarks[0][2].y
+        if mode == "POSTURE_DETECTION":
+            nudged = False
+            print()
+            print(eye_level)
+            if abs(eye_level - TARGET_EYE_HEIGHT) >= TOLERANCE:
+                print("BAD POSTURE")
+                bad_posture_duration += 1
+                total_bad_posture_duration += 1
+            else:
+                bad_posture_duration = 0
+            if bad_posture_duration > BAD_POSTURE_DURATION_THRESHOLD:
+                print("BAD POSTURE DETECTED; NUDGING")
+                bad_posture_duration = 0
+                send_command(5) # For vibrate
+                nudges += 1
+            total_duration += 1
+            time.sleep(1)
+            print("STATISTICS")
+            print("-----------------------")
+            print("total duration: ", total_duration)
+            print("bad posture duration: ", total_bad_posture_duration)
+            print("consecutive seconds in bad posture", bad_posture_duration)
+            print("nudges: ", nudges)
+            
+            toPrint = {"time": total_duration, "time in bad posture": total_bad_posture_duration, "nudges": nudges, 
+            "tolerance": TOLERANCE, "duration threshold": BAD_POSTURE_DURATION_THRESHOLD, 
+            "target height": TARGET_EYE_HEIGHT, "real height": eye_level}
+            writer.writerow(toPrint)
+            if total_duration > 480:
+                TOLERANCE = 0.2
+                BAD_POSTURE_DURATION_THRESHOLD = 10
+        if mode == "HEIGHT_ADJUST":
+            print(eye_level)
+            if eye_level > TARGET_EYE_HEIGHT + .03:
+                # MOVE DOWN
+                print("HEAD IS TOO LOW")
+                send_command(2)
+            if eye_level < TARGET_EYE_HEIGHT - .03:
+                # MOVE up
+                print("HEAD IS TOO HIGH")
+                send_command(3)
+            time.sleep(0.5)
+        if mode == "NO_MOVE":
+            print(eye_level)
 # Release the camera and close windows
 cap.release()
 cv2.destroyAllWindows()
